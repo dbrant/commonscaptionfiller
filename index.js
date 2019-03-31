@@ -1,5 +1,6 @@
 
 
+const nodemw = require('nodemw');
 const https = require('https');
 const querystring = require('querystring');
 const jsdom = require("jsdom");
@@ -8,7 +9,14 @@ const { JSDOM } = jsdom;
 const API_PATH = "/w/api.php?format=json&formatversion=2&";
 const API_DOMAIN_PATH = "https://commons.wikimedia.org" + API_PATH;
 
-let Cookie = "";
+let api = new nodemw({
+    "protocol": "https",  // default to 'http'
+    "server": "commons.wikimedia.org",  // host name of MediaWiki-powered site
+    "path": "/w",                  // path to api.php script
+    "debug": false,                // is more verbose when set to true
+    "userAgent": "DBrantBot",      // define custom bot's user agent
+});
+
 
 // examples:
 //File:Katowice_-_Sezamkowa_Street_(2).jpg
@@ -23,24 +31,27 @@ main();
 
 async function main() {
 
+    let username = "";
+    let password = "";
+    let token = '+\\';
 
+    for (let i = 0; i < process.argv.length; i++) {
+        if (process.argv[i] === '--user') {
+            username = process.argv[i + 1];
+        } else if (process.argv[i] === '--pass') {
+            password = process.argv[i + 1];
+        }
+    }
 
+    if (username.length > 0) {
+        console.log("Logging in as " + username);
+        await login(username, password);
 
-    let logintoken = await getLoginToken();
-    console.log("Login token: " + logintoken);
-    await login(..., ..., logintoken);
+        console.log("Getting CSRF token...");
+        token = await getCsrfToken();
+    }
 
-
-
-    console.log("Getting CSRF token...");
-    let token = await getCsrfToken(); // '+\\';
-    console.log("Token: " + token);
-
-
-
-
-
-    let pages = await getRandomPages(1);
+    let pages = await getRandomPages(5);
     for (let i = 0; i < pages.length; i++) {
         let title = pages[i];
 
@@ -73,43 +84,22 @@ async function main() {
 }
 
 
-
 async function setPageLabel(title, lang, label, token) {
-    let postData = querystring.stringify({
-        'site': 'commonswiki',
-        'title': title,
-        'language': lang,
-        'value': label,
-        'token': token
-    });
-
-    let options = {
-        hostname: 'commons.wikimedia.org',
-        path: API_PATH + 'action=wbsetlabel',
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': postData.length
-        }
-    };
-
     return new Promise(function(resolve, reject) {
-        let req = https.request(options, (res) => {
-            console.log('statusCode:', res.statusCode);
-            let rawData = '';
-            res.on('data', (chunk) => {
-                rawData += chunk;
-            });
-            res.on('end', () => {
-                resolve(rawData);
-            });
-        });
-
-        req.on('error', (e) => {
-            console.error(e);
-        });
-        req.write(postData);
-        req.end();
+        api.api.call(params = {
+            action: 'wbsetlabel',
+            site: 'commonswiki',
+            title: title,
+            language: lang,
+            value: label,
+            token: token
+        }, function(err, response) {
+            if (err) {
+                console.error("Set label failed: " + err);
+                reject({});
+            }
+            console.log("Set label success.");
+        }, 'POST');
     });
 }
 
@@ -157,172 +147,79 @@ function isDescriptionWorthy(description) {
 
 function getLabelsForPage(title) {
     return new Promise(function(resolve, reject) {
-        callApi(API_DOMAIN_PATH + 'action=wbgetentities&sites=commonswiki&props=labels&titles=' + encodeURIComponent(title),
-            function (response) {
-                if (!response.entities) {
-                    console.error("Labels API response looks malformed.");
-                    resolve({});
-                }
-                for (let entityId in response.entities) {
-                    let entity = response.entities[entityId];
-                    resolve(entity.labels || {});
-                }
+        api.api.call(params = {
+            formatversion: 2,
+            action: 'wbgetentities',
+            sites: 'commonswiki',
+            props: 'labels',
+            titles: title
+        }, function(err, resp, next, rawData) {
+            if (!rawData.entities) {
+                console.error("Labels API response looks malformed.");
+                resolve({});
             }
-        );
+            for (let entityId in rawData.entities) {
+                let entity = rawData.entities[entityId];
+                resolve(entity.labels || {});
+                break;
+            }
+        });
     });
 }
 
 function getRandomPages(amount) {
-    let pages = [];
     return new Promise(function(resolve, reject) {
-        callApi(API_DOMAIN_PATH + 'action=query&generator=random&grnnamespace=6&grnlimit=' + amount,
-            function (response) {
-                if (!response.query || !response.query.pages) {
-                    console.error("Random API response looks malformed.");
-                    return;
+        api.api.call(params = {
+            formatversion: 2,
+            action: 'query',
+            generator: 'random',
+            grnnamespace: 6,
+            grnlimit: amount
+        }, function(err, response) {
+            let pages = [];
+            for (let pageId in response.pages) {
+                if (response.pages.hasOwnProperty(pageId)) {
+                    pages.push(response.pages[pageId].title);
                 }
-                for (let pageId in response.query.pages) {
-                    if (response.query.pages.hasOwnProperty(pageId)) {
-                        pages.push(response.query.pages[pageId].title);
-                    }
-                }
-                resolve(pages);
             }
-        );
+            resolve(pages);
+        });
+    });
+}
+
+function getPageContents(title) {
+    return new Promise(function(resolve, reject) {
+        api.api.call(params = {
+            formatversion: 2,
+            action: 'parse',
+            page: title
+        }, function(err, resp, next, rawData) {
+            resolve(rawData.parse.text);
+        });
     });
 }
 
 function getCsrfToken() {
     return new Promise(function(resolve, reject) {
-        callApi(API_DOMAIN_PATH + 'action=query&meta=tokens',
-            function (response) {
-                if (!response.query || !response.query.tokens) {
-                    console.error("Tokens API response looks malformed.");
-                    resolve({});
-                }
-                resolve(response.query.tokens.csrftoken);
-            }
-        );
+        api.api.call(params = {
+            formatversion: 2,
+            action: 'query',
+            meta: 'tokens'
+        }, function(err, response) {
+            resolve(response.tokens.csrftoken);
+        })
     });
 }
 
-function getLoginToken() {
+function login(username, password) {
     return new Promise(function(resolve, reject) {
-        callApi(API_DOMAIN_PATH + 'action=query&meta=tokens&type=login',
-            function (response) {
-                if (!response.query || !response.query.tokens) {
-                    console.error("Tokens API response looks malformed.");
-                    resolve({});
-                }
-                resolve(response.query.tokens.logintoken);
+        api.logIn(process.argv[2], process.argv[3], function(err, res) {
+            if (err) {
+                console.log("Login failed: " + err);
+                reject("Login failed.");
             }
-        );
-    });
-}
-
-function login(username, password, token) {
-    let postData = "username=" + username + "&password=" + password + "&logintoken=" + encodeURIComponent(token) + "&loginreturnurl=https://wikipedia.org";
-    console.log(postData);
-
-    let options = {
-        hostname: 'commons.wikimedia.org',
-        path: API_PATH + "action=clientlogin",
-        method: 'POST',
-        headers: {
-            'Cookie': Cookie,
-            'Content-Type': 'application/x-www-form-urlencoded',
-            'Content-Length': postData.length
-        }
-    };
-
-    return new Promise(function(resolve, reject) {
-        let req = https.request(options, (res) => {
-            console.log('statusCode:', res.statusCode);
-            let rawData = '';
-            res.on('data', (chunk) => {
-                rawData += chunk;
-            });
-            res.on('end', () => {
-
-                console.log(rawData);
-
-                let response = JSON.parse(rawData);
-
-                if (!response.clientlogin || response.clientlogin.status !== 'PASS') {
-                    console.error("Login failed.");
-                    resolve({});
-                }
-                resolve(response.login);
-            });
+            console.log("Logged in successfully!");
+            resolve("Login success.");
         });
-
-        req.on('error', (e) => {
-            console.error(e);
-        });
-        req.write(postData);
-        req.end();
     });
 }
-
-function getPageContents(title) {
-    let contents = "";
-    return new Promise(function(resolve, reject) {
-        callApi(API_DOMAIN_PATH + 'action=parse&page=' + encodeURIComponent(title),
-            function (response) {
-                contents = response.parse.text;
-                resolve(contents);
-            }
-        );
-    });
-}
-
-function callApi(url, callback) {
-    // TODO: pass cookie in headers~!
-    https.get(url, (res) => {
-        const { statusCode } = res;
-        const contentType = res.headers['content-type'];
-
-        if (res.headers.hasOwnProperty('set-cookie')) {
-
-            console.log(">>>>>>> COOKIE: " + res.headers['set-cookie']);
-
-            Cookie = Cookie.length > 0 ? (Cookie + "; " + res.headers['set-cookie']) : res.headers['set-cookie'];
-        }
-
-        let error;
-        if (statusCode !== 200) {
-            error = new Error('Request Failed.\n' +
-                            `Status Code: ${statusCode}`);
-        } else if (!/^application\/json/.test(contentType)) {
-            error = new Error('Invalid content-type.\n' +
-                            `Expected application/json but received ${contentType}`);
-        }
-        if (error) {
-            console.error(error.message);
-            // Consume response data to free up memory
-            res.resume();
-            return;
-        }
-
-        res.setEncoding('utf8');
-        let rawData = '';
-        res.on('data', (chunk) => { rawData += chunk; });
-        res.on('end', () => {
-            try {
-                let response = JSON.parse(rawData);
-                if (response.error) {
-                    console.error(">>> API request failed: " + response.error.info);
-                } else {
-                    callback(response);
-                }
-            } catch (e) {
-                console.error(e.message);
-            }
-        });
-    }).on('error', (e) => {
-        console.error(`Got error: ${e.message}`);
-    });
-}
-
-
-
