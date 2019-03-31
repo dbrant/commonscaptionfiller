@@ -28,6 +28,7 @@ main();
 
 async function main() {
 
+    let quantity = 1;
     let username = "";
     let password = "";
     let token = '+\\';
@@ -37,6 +38,8 @@ async function main() {
             username = process.argv[i + 1];
         } else if (process.argv[i] === '--pass') {
             password = process.argv[i + 1];
+        } else if (process.argv[i] === '--count') {
+            quantity = parseInt(process.argv[i + 1]);
         }
     }
 
@@ -50,7 +53,7 @@ async function main() {
         console.log("Working anonymously...");
     }
 
-    let pages = await getRandomPages(5);
+    let pages = await getRandomPages(quantity);
     for (let i = 0; i < pages.length; i++) {
         let title = pages[i];
 
@@ -120,8 +123,11 @@ async function getDescriptionsFromPage(title) {
                     if (element.hasAttribute("lang")) {
                         lang = element.getAttribute("lang");
                     }
-
                     let langLabel = element.querySelector("span.language");
+                    if (langLabel) {
+                        element.removeChild(langLabel);
+                    }
+                    langLabel = element.querySelector("[class^='langlabel']");
                     if (langLabel) {
                         element.removeChild(langLabel);
                     }
