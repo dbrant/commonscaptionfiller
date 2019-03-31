@@ -10,7 +10,6 @@
   "license": "ISC",
   "dependencies": {
     "jsdom": "^14.0.0",
-    "mediawiki-api": "^0.1.8",
     "nodemw": "^0.12.2"
   }
 }

@@ -1,4 +1,4 @@
-
+// Dmitry Brant, 2019.
 
 const nodemw = require('nodemw');
 const https = require('https');
@@ -6,15 +6,12 @@ const querystring = require('querystring');
 const jsdom = require("jsdom");
 const { JSDOM } = jsdom;
 
-const API_PATH = "/w/api.php?format=json&formatversion=2&";
-const API_DOMAIN_PATH = "https://commons.wikimedia.org" + API_PATH;
-
 let api = new nodemw({
-    "protocol": "https",  // default to 'http'
-    "server": "commons.wikimedia.org",  // host name of MediaWiki-powered site
-    "path": "/w",                  // path to api.php script
-    "debug": false,                // is more verbose when set to true
-    "userAgent": "DBrantBot",      // define custom bot's user agent
+    "protocol": "https",
+    "server": "commons.wikimedia.org",
+    "path": "/w",
+    "debug": false,
+    "userAgent": "DBrantBot v1",
 });
 
 
@@ -99,6 +96,7 @@ async function setPageLabel(title, lang, label, token) {
             if (err) {
                 console.error("Set label failed: " + err);
                 reject("error");
+                return;
             }
             console.log("Set label success.");
             resolve("success");
@@ -144,7 +142,7 @@ async function getDescriptionsFromPage(title) {
 }
 
 function isDescriptionWorthy(description) {
-    return description.length > 4 && description.length < 1024
+    return description.length > 4 && description.length < 250
         && description.indexOf("</a>") === -1 && description.indexOf("</li>") === -1;
 }
 
@@ -160,6 +158,7 @@ function getLabelsForPage(title) {
             if (!rawData.entities) {
                 console.error("Labels API response looks malformed.");
                 resolve({});
+                return;
             }
             for (let entityId in rawData.entities) {
                 let entity = rawData.entities[entityId];
@@ -216,10 +215,11 @@ function getCsrfToken() {
 
 function login(username, password) {
     return new Promise(function(resolve, reject) {
-        api.logIn(process.argv[2], process.argv[3], function(err, res) {
+        api.logIn(username, password, function(err, res) {
             if (err) {
                 console.log("Login failed: " + err);
                 reject("Login failed.");
+                return;
             }
             console.log("Logged in successfully!");
             resolve("Login success.");
