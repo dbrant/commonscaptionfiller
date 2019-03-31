@@ -57,7 +57,8 @@ async function main() {
     for (let i = 0; i < pages.length; i++) {
         let title = pages[i];
 
-        console.log("Processing labels: " + title);
+        console.log("Processing page: " + title);
+
         let labels = await getLabelsForPage(title);
         for (let lang in labels) {
             if (!labels.hasOwnProperty(lang)) {
@@ -66,8 +67,7 @@ async function main() {
             console.log(">>> Existing label: " + lang + ": " + labels[lang].value);
         }
 
-        console.log("Processing page: " + title);
-        let descriptions = await getDescriptionsFromPage(title);
+        let descriptions = getDescriptionsFromPage(await getPageContents(title));
 
         for (let lang in descriptions) {
             if (!descriptions.hasOwnProperty(lang)) {
@@ -107,49 +107,72 @@ async function setPageLabel(title, lang, label, token) {
     });
 }
 
-async function getDescriptionsFromPage(title) {
-    let text = await getPageContents(title);
+function getDescriptionsFromPage(text) {
     let descriptions = {};
     const document = (new JSDOM(text)).window.document;
     let descTable = document.querySelector("td.description");
-    return new Promise(function(resolve, reject) {
-        if (descTable) {
-            let elements = descTable.querySelectorAll("div.description");
-            if (elements && elements.length > 0) {
-                for (let i = 0; i < elements.length; i++) {
-                    let element = elements[i];
+    if (descTable) {
+        let haveOne = false;
 
-                    let lang = 'en';
-                    if (element.hasAttribute("lang")) {
-                        lang = element.getAttribute("lang");
-                    }
-                    let langLabel = element.querySelector("span.language");
-                    if (langLabel) {
-                        element.removeChild(langLabel);
-                    }
-                    langLabel = element.querySelector("[class^='langlabel']");
-                    if (langLabel) {
-                        element.removeChild(langLabel);
-                    }
-                    let desc = elements[i].textContent.trim().replace("\n", "").replace("\r", "").replace("\t", " ");
-                    if (!descriptions.hasOwnProperty(lang) && isDescriptionWorthy(desc)) {
-                        descriptions[lang] = desc;
-                    }
-                }
-            } else {
-                let desc = descTable.textContent.trim().replace("\n", "").replace("\r", "").replace("\t", " ");
+        for (let n = 0; n < descTable.childNodes.length; n++) {
+            let node = descTable.childNodes[n];
+
+            // Look for direct child nodes that are divs with a specific class.
+            if (node.tagName !== 'DIV') {
+                continue;
+            }
+            if (!node.classList.contains('description')) {
+                continue;
+            }
+            // If the description contains list(s), it's probably too complex for us.
+            if (descTable.querySelectorAll("li").length > 0) {
+                continue;
+            }
+            haveOne = true;
+
+            let lang = 'en';
+            if (node.hasAttribute("lang")) {
+                lang = node.getAttribute("lang");
+            }
+
+            // Strip away any "Language" labels, which are usually spans.
+            let langLabel = node.querySelector("span.language");
+            if (langLabel) {
+                node.removeChild(langLabel);
+            }
+            langLabel = node.querySelector("[class^='langlabel']");
+            if (langLabel) {
+                node.removeChild(langLabel);
+            }
+
+            let desc = massageDescription(node.textContent);
+            if (!descriptions.hasOwnProperty(lang) && isDescriptionWorthy(desc)) {
+                descriptions[lang] = desc;
+            }
+        }
+
+        if (!haveOne) {
+            // If the description itself contains table(s), then forget about it.
+            let badElements = descTable.querySelectorAll("table");
+            if (badElements.length == 0) {
+                let desc = massageDescription(descTable.textContent);
                 if (isDescriptionWorthy(desc)) {
                     descriptions["en"] = desc;
                 }
             }
         }
-        resolve(descriptions);
-    });
+    }
+    return descriptions;
+}
+
+function massageDescription(description) {
+    return description.trim().replace("\n", "").replace("\r", "").replace("\t", " ");
 }
 
 function isDescriptionWorthy(description) {
     return description.length > 4 && description.length < 250
-        && description.indexOf("</a>") === -1 && description.indexOf("</li>") === -1;
+        && description.indexOf("</a>") === -1 && description.indexOf("</li>") === -1
+        && description.indexOf("http://") === -1 && description.indexOf("https://") === -1
 }
 
 function getLabelsForPage(title) {
