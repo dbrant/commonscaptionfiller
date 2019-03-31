@@ -32,6 +32,7 @@ async function main() {
     let username = "";
     let password = "";
     let token = '+\\';
+    let dryRun = false;
 
     for (let i = 0; i < process.argv.length; i++) {
         if (process.argv[i] === '--user') {
@@ -40,6 +41,8 @@ async function main() {
             password = process.argv[i + 1];
         } else if (process.argv[i] === '--count') {
             quantity = parseInt(process.argv[i + 1]);
+        } else if (process.argv[i] === '--dry') {
+            dryRun = true;
         }
     }
 
@@ -79,8 +82,10 @@ async function main() {
                 continue;
             }
 
-            console.log(">>>>> Setting new description: " + lang + ": " + descriptions[lang]);
-            await setPageLabel(title, lang, descriptions[lang], token);
+            if (!dryRun) {
+                console.log(">>>>> Setting new description: " + lang + ": " + descriptions[lang]);
+                await setPageLabel(title, lang, descriptions[lang], token);
+            }
         }
     }
 }
