@@ -49,6 +49,8 @@ async function main() {
 
         console.log("Getting CSRF token...");
         token = await getCsrfToken();
+    } else {
+        console.log("Working anonymously...");
     }
 
     let pages = await getRandomPages(5);
@@ -78,7 +80,7 @@ async function main() {
             }
 
             console.log(">>>>> Setting new description: " + lang + ": " + descriptions[lang]);
-            //await setPageLabel(title, lang, descriptions[lang], token);
+            await setPageLabel(title, lang, descriptions[lang], token);
         }
     }
 }
@@ -96,9 +98,10 @@ async function setPageLabel(title, lang, label, token) {
         }, function(err, response) {
             if (err) {
                 console.error("Set label failed: " + err);
-                reject({});
+                reject("error");
             }
             console.log("Set label success.");
+            resolve("success");
         }, 'POST');
     });
 }
