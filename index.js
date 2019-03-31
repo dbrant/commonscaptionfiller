@@ -51,7 +51,7 @@ async function main() {
 
     if (username.length > 0) {
         console.log("Logging in as " + username);
-        await login(username, password);
+        await login(username, password).catch(function (err) { console.error(err); });
 
         console.log("Getting CSRF token...");
         token = await getCsrfToken();
@@ -59,32 +59,45 @@ async function main() {
         console.log("Working anonymously...");
     }
 
-    let pages = await getRandomPages(quantity);
-    for (let i = 0; i < pages.length; i++) {
-        let title = pages[i];
+    let pagesLeft = quantity;
+    let pagesAtATime = 50;
 
-        console.log("Processing page: " + title);
-
-        let descriptions = getDescriptionsFromPage(await getPageContents(title));
-        if (Object.keys(descriptions).length == 0) {
-            continue;
+    while (pagesLeft > 0) {
+        let pagesToGet = pagesLeft;
+        if (pagesToGet > pagesAtATime) {
+            pagesToGet = pagesAtATime;
         }
+        pagesLeft -= pagesToGet;
 
-        let labels = await getLabelsForPage(title);
+        let pages = await getRandomPages(pagesToGet).catch(function (err) { console.error(err); });
 
-        for (let lang in descriptions) {
-            if (!descriptions.hasOwnProperty(lang)) {
+        for (let i = 0; i < pages.length; i++) {
+            let title = pages[i];
+
+            console.log("--------------------------------");
+            console.log("Processing page: " + title);
+
+            let descriptions = getDescriptionsFromPage(await getPageContents(title));
+            if (Object.keys(descriptions).length === 0) {
                 continue;
             }
 
-            if (labels.hasOwnProperty(lang)) {
-                console.log(">>> Label already exists for language: " + lang);
-                continue;
-            }
+            let labels = await getLabelsForPage(title).catch(function (err) { console.error(err); });
 
-            if (!dryRun) {
-                console.log(">>>>> Setting new description: " + lang + ": " + descriptions[lang]);
-                await setPageLabel(title, lang, descriptions[lang], token);
+            for (let lang in descriptions) {
+                if (!descriptions.hasOwnProperty(lang)) {
+                    continue;
+                }
+
+                if (labels.hasOwnProperty(lang)) {
+                    console.log(">>> Label already exists for language: " + lang);
+                    continue;
+                }
+
+                if (!dryRun) {
+                    console.log(">>>>> Setting new description: " + lang + ": " + descriptions[lang]);
+                    await setPageLabel(title, lang, descriptions[lang], token).catch(function (err) { console.error(err); });
+                }
             }
         }
     }
