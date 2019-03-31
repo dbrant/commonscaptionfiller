@@ -1,8 +1,6 @@
 // Dmitry Brant, 2019.
 
 const nodemw = require('nodemw');
-const https = require('https');
-const querystring = require('querystring');
 const jsdom = require("jsdom");
 const { JSDOM } = jsdom;
 
@@ -62,15 +60,12 @@ async function main() {
 
         console.log("Processing page: " + title);
 
-        let labels = await getLabelsForPage(title);
-        for (let lang in labels) {
-            if (!labels.hasOwnProperty(lang)) {
-                continue;
-            }
-            console.log(">>> Existing label: " + lang + ": " + labels[lang].value);
+        let descriptions = getDescriptionsFromPage(await getPageContents(title));
+        if (Object.keys(descriptions).length == 0) {
+            continue;
         }
 
-        let descriptions = getDescriptionsFromPage(await getPageContents(title));
+        let labels = await getLabelsForPage(title);
 
         for (let lang in descriptions) {
             if (!descriptions.hasOwnProperty(lang)) {
@@ -129,8 +124,8 @@ function getDescriptionsFromPage(text) {
             if (!node.classList.contains('description')) {
                 continue;
             }
-            // If the description contains list(s), it's probably too complex for us.
-            if (descTable.querySelectorAll("li").length > 0) {
+            // Check if the description is too presentationally complex for us...
+            if (descTable.querySelectorAll("li").length > 0 || descTable.querySelectorAll("p").length > 0) {
                 continue;
             }
             haveOne = true;
@@ -157,6 +152,7 @@ function getDescriptionsFromPage(text) {
         }
 
         if (!haveOne) {
+            /*
             // If the description itself contains table(s), then forget about it.
             let badElements = descTable.querySelectorAll("table");
             if (badElements.length == 0) {
@@ -165,6 +161,7 @@ function getDescriptionsFromPage(text) {
                     descriptions["en"] = desc;
                 }
             }
+            */
         }
     }
     return descriptions;
