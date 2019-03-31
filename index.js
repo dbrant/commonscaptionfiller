@@ -1,4 +1,9 @@
+//
+// This script requests random pages from Commons and populates their structured caption (label) field
+// based on the unstructured description template that may or may not be present in the page contents.
+//
 // Dmitry Brant, 2019.
+//
 
 const nodemw = require('nodemw');
 const jsdom = require("jsdom");
@@ -13,7 +18,7 @@ let api = new nodemw({
 });
 
 
-// examples:
+// examples with diverse types of unstructured description boxes:
 //File:Katowice_-_Sezamkowa_Street_(2).jpg
 //File:Croix cimetière Monument morts St Loup Varennes 1.jpg
 //File:Alexandra Park - geograph.org.uk - 1774297.jpg
@@ -152,6 +157,10 @@ function getDescriptionsFromPage(text) {
         }
 
         if (!haveOne) {
+
+            // Not quite fully baked:
+            // What to do if we don't have any div.description nodes?
+            // Should we treat the whole field as an English description? etc.
             /*
             // If the description itself contains table(s), then forget about it.
             let badElements = descTable.querySelectorAll("table");
