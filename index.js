@@ -8,6 +8,8 @@ const { JSDOM } = jsdom;
 const API_PATH = "/w/api.php?format=json&formatversion=2&";
 const API_DOMAIN_PATH = "https://commons.wikimedia.org" + API_PATH;
 
+let Cookie = "";
+
 // examples:
 //File:Katowice_-_Sezamkowa_Street_(2).jpg
 //File:Croix cimetière Monument morts St Loup Varennes 1.jpg
@@ -20,11 +22,27 @@ main();
 
 
 async function main() {
+
+
+
+
+    let logintoken = await getLoginToken();
+    console.log("Login token: " + logintoken);
+    await login(..., ..., logintoken);
+
+
+
+    console.log("Getting CSRF token...");
+    let token = await getCsrfToken(); // '+\\';
+    console.log("Token: " + token);
+
+
+
+
+
     let pages = await getRandomPages(1);
     for (let i = 0; i < pages.length; i++) {
         let title = pages[i];
-
-        //title = "File:Croix cimetière Monument morts St Loup Varennes 1.jpg";
 
         console.log("Processing labels: " + title);
         let labels = await getLabelsForPage(title);
@@ -49,21 +67,20 @@ async function main() {
             }
 
             console.log(">>>>> Setting new description: " + lang + ": " + descriptions[lang]);
-
-            await setPageLabel(title, lang, descriptions[lang]);
+            //await setPageLabel(title, lang, descriptions[lang], token);
         }
     }
 }
 
 
 
-async function setPageLabel(title, lang, label) {
+async function setPageLabel(title, lang, label, token) {
     let postData = querystring.stringify({
         'site': 'commonswiki',
         'title': title,
         'language': lang,
         'value': label,
-        'token': '+\\'
+        'token': token
     });
 
     let options = {
@@ -189,6 +206,64 @@ function getCsrfToken() {
     });
 }
 
+function getLoginToken() {
+    return new Promise(function(resolve, reject) {
+        callApi(API_DOMAIN_PATH + 'action=query&meta=tokens&type=login',
+            function (response) {
+                if (!response.query || !response.query.tokens) {
+                    console.error("Tokens API response looks malformed.");
+                    resolve({});
+                }
+                resolve(response.query.tokens.logintoken);
+            }
+        );
+    });
+}
+
+function login(username, password, token) {
+    let postData = "username=" + username + "&password=" + password + "&logintoken=" + encodeURIComponent(token) + "&loginreturnurl=https://wikipedia.org";
+    console.log(postData);
+
+    let options = {
+        hostname: 'commons.wikimedia.org',
+        path: API_PATH + "action=clientlogin",
+        method: 'POST',
+        headers: {
+            'Cookie': Cookie,
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Content-Length': postData.length
+        }
+    };
+
+    return new Promise(function(resolve, reject) {
+        let req = https.request(options, (res) => {
+            console.log('statusCode:', res.statusCode);
+            let rawData = '';
+            res.on('data', (chunk) => {
+                rawData += chunk;
+            });
+            res.on('end', () => {
+
+                console.log(rawData);
+
+                let response = JSON.parse(rawData);
+
+                if (!response.clientlogin || response.clientlogin.status !== 'PASS') {
+                    console.error("Login failed.");
+                    resolve({});
+                }
+                resolve(response.login);
+            });
+        });
+
+        req.on('error', (e) => {
+            console.error(e);
+        });
+        req.write(postData);
+        req.end();
+    });
+}
+
 function getPageContents(title) {
     let contents = "";
     return new Promise(function(resolve, reject) {
@@ -202,9 +277,17 @@ function getPageContents(title) {
 }
 
 function callApi(url, callback) {
+    // TODO: pass cookie in headers~!
     https.get(url, (res) => {
         const { statusCode } = res;
         const contentType = res.headers['content-type'];
+
+        if (res.headers.hasOwnProperty('set-cookie')) {
+
+            console.log(">>>>>>> COOKIE: " + res.headers['set-cookie']);
+
+            Cookie = Cookie.length > 0 ? (Cookie + "; " + res.headers['set-cookie']) : res.headers['set-cookie'];
+        }
 
         let error;
         if (statusCode !== 200) {
