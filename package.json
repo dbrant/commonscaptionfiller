@@ -10,6 +10,7 @@
   "license": "ISC",
   "dependencies": {
     "jsdom": "^14.0.0",
-    "nodemw": "^0.12.2"
+    "nodemw": "^0.12.2",
+    "readline-sync": "^1.4.9"
   }
 }

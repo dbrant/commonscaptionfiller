@@ -5,6 +5,7 @@
 // Dmitry Brant, 2019.
 //
 
+const readline = require('readline');
 const nodemw = require('nodemw');
 const jsdom = require("jsdom");
 const { JSDOM } = jsdom;
@@ -17,6 +18,10 @@ let api = new nodemw({
     "userAgent": "DBrantBot v1",
 });
 
+const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+});
 
 // examples with diverse types of unstructured description boxes:
 //File:Katowice_-_Sezamkowa_Street_(2).jpg
@@ -59,6 +64,29 @@ async function main() {
         console.log("Working anonymously...");
     }
 
+
+
+
+    /*
+    for (let hour = 1; hour <= 12; hour++) {
+        for (let minute = 0; minute < 60; minute++) {
+            let hourStr = hour.toString();
+            if (hourStr.length === 1) { hourStr = "0" + hourStr; }
+            let minuteStr = minute.toString();
+            if (minuteStr.length === 1) { minuteStr = "0" + minuteStr; }
+
+            let pageTitle = "File:Clock_" + hourStr + "-" + minuteStr + ".svg";
+
+            await performOperationForPage(pageTitle, token);
+            return;
+        }
+    }
+    return;
+    */
+
+
+
+
     let pagesLeft = quantity;
     let pagesAtATime = 50;
 
@@ -74,33 +102,59 @@ async function main() {
         for (let i = 0; i < pages.length; i++) {
             let title = pages[i];
 
-            console.log("--------------------------------");
-            console.log("Processing page: " + title);
+            await performOperationForPage(title, token);
+        }
+    }
+}
 
-            let descriptions = getDescriptionsFromPage(await getPageContents(title));
-            if (Object.keys(descriptions).length === 0) {
+async function performOperationForPage(title, token, dryRun = false) {
+    console.log("--------------------------------");
+    console.log("Processing page: " + title);
+
+    return new Promise(async function(resolve, reject) {
+        let descriptions = getDescriptionsFromPage(await getPageContents(title));
+        if (Object.keys(descriptions).length === 0) {
+            resolve();
+            return;
+        }
+
+        let labels = await getLabelsForPage(title).catch(function (err) {
+            console.error(err);
+        });
+
+        for (let lang in descriptions) {
+            if (!descriptions.hasOwnProperty(lang)) {
                 continue;
             }
 
-            let labels = await getLabelsForPage(title).catch(function (err) { console.error(err); });
+            if (labels.hasOwnProperty(lang)) {
+                console.log(">>> Label already exists for language: " + lang);
+                continue;
+            }
 
-            for (let lang in descriptions) {
-                if (!descriptions.hasOwnProperty(lang)) {
+            if (!dryRun) {
+                console.log(">>> Description: " + lang + ": " + descriptions[lang]);
+
+                if (!(await confirmYesNo("Would you like to apply it? (y/n) [n]"))) {
                     continue;
                 }
 
-                if (labels.hasOwnProperty(lang)) {
-                    console.log(">>> Label already exists for language: " + lang);
-                    continue;
-                }
-
-                if (!dryRun) {
-                    console.log(">>>>> Setting new description: " + lang + ": " + descriptions[lang]);
-                    await setPageLabel(title, lang, descriptions[lang], token).catch(function (err) { console.error(err); });
-                }
+                await setPageLabel(title, lang, descriptions[lang], token).catch(function (err) {
+                    console.error(err);
+                });
             }
         }
-    }
+        resolve();
+    });
+}
+
+async function confirmYesNo(message) {
+    return new Promise(function(resolve, reject) {
+        rl.question(message + " > ", (answer) => {
+            resolve(answer === 'y' || answer === 'Y');
+            //rl.close();
+        });
+    });
 }
 
 
